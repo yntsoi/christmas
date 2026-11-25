@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>聖誕星光拍拍樂 - 視障視覺訓練遊戲</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap');
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000000;
+      font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* 老師設定面板自訂捲軸 */
+    .custom-scroll::-webkit-scrollbar {
+      width: 8px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #1e293b;
+      border-radius: 8px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 8px;
+    }
+
+    /* 進度星星發光動畫 */
+    @keyframes starPop {
+      0% { transform: scale(0.5); opacity: 0.3; }
+      60% { transform: scale(1.25); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .star-lit {
+      animation: starPop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    /* 長按解鎖設定按鈕環形進度 */
+    .hold-ring {
+      transition: stroke-dashoffset 0.05s linear;
+    }
+  </style>
+</head>
+<body class="bg-black text-white select-none overflow-hidden">
+
+  <!-- 主遊戲畫布 -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- 頂部狀態與進度列（高對比、簡潔不干擾視覺） -->
+  <div id="topHud" class="fixed top-0 left-0 right-0 p-4 sm:p-6 flex items-center justify-between pointer-events-none z-10">
+    <!-- 集點進度指示器（大尺寸高對比星星） -->
+    <div id="progressBar" class="flex items-center gap-2 sm:gap-3 bg-black/60 backdrop-blur-md px-4 py-2.5 rounded-full border-2 border-yellow-400/40 shadow-lg">
+      <!-- 由 JS 動態生成 5 顆進度星 -->
+    </div>
+
+    <!-- 右上角：老師／家長設定按鈕（需長按 1.2 秒開啟，防止學生誤觸退出） -->
+    <div class="pointer-events-auto flex items-center gap-3">
+      <button id="teacherBtn" aria-label="長按開啟老師設定"
+        class="relative w-14 h-14 rounded-full bg-slate-900/80 border-2 border-slate-600/70 flex items-center justify-center text-slate-300 active:scale-95 transition-transform shadow-lg">
+        <svg class="w-14 h-14 absolute inset-0 -rotate-90" viewBox="0 0 56 56">
+          <circle id="holdProgressCircle" cx="28" cy="28" r="24" fill="none" stroke="#facc15" stroke-width="4"
+            stroke-dasharray="150.8" stroke-dashoffset="150.8" stroke-linecap="round" class="hold-ring" />
+        </svg>
+        <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- 長按提示浮標 -->
+  <div id="holdHint" class="fixed top-20 right-6 bg-slate-800/95 text-yellow-300 text-sm font-bold px-3.5 py-2 rounded-xl border border-yellow-400/50 shadow-xl opacity-0 pointer-events-none transition-opacity duration-200 z-20">
+    請持續按住 1 秒開啟老師設定...
+  </div>
+
+  <!-- 首次啟動引導遮罩（解鎖 iOS Safari Web Audio 聲音限制） -->
+  <div id="startOverlay" class="fixed inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 z-30">
+    <div class="max-w-lg w-full bg-slate-900/95 border-2 border-yellow-400/60 rounded-3xl p-8 text-center shadow-2xl">
+      <div class="w-24 h-24 mx-auto mb-5 rounded-full bg-yellow-400/20 border-2 border-yellow-400 flex items-center justify-center shadow-[0_0_30px_rgba(250,204,21,0.5)]">
+        <span class="text-5xl">🎄</span>
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-black text-yellow-300 tracking-wide mb-3">聖誕星光拍拍樂</h1>
+      <p class="text-slate-300 text-base sm:text-lg leading-relaxed mb-6">
+        專為視障學生設計的視覺注視、追視與拍打訓練。<br/>
+        支援四種視覺複雜度層次與聖誕音樂互動。
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button id="startGameBtn"
+          class="flex-1 py-4 px-6 rounded-2xl bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 font-black text-xl shadow-[0_0_25px_rgba(250,204,21,0.5)] active:scale-95 transition-transform">
+          ▶ 開始訓練
+        </button>
+        <button id="openSettingsFirstBtn"
+          class="py-4 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 border-2 border-slate-600 text-white font-bold text-lg active:scale-95 transition-transform">
+          ⚙️ 老師設定
+        </button>
+      </div>
+      <p class="text-xs text-slate-400 mt-5">提示：訓練進行中，長按右上角齒輪圖示 1 秒可隨時調整難度與音樂</p>
+    </div>
+  </div>
+
+  <!-- 過關慶祝橫幅（短暫顯示，不阻擋視覺） -->
+  <div id="celebrationBanner" class="fixed inset-x-0 bottom-10 flex justify-center pointer-events-none opacity-0 transition-opacity duration-300 z-20">
+    <div class="bg-slate-900/90 border-2 border-yellow-400 px-8 py-4 rounded-full shadow-[0_0_40px_rgba(250,204,21,0.7)] flex items-center gap-3">
+      <span class="text-3xl">🎅✨</span>
+      <span class="text-2xl sm:text-3xl font-black text-yellow-300 tracking-wider">太棒了！聖誕快樂！</span>
+    </div>
+  </div>
+
+  <!-- 老師／家長教學參數設定面板 -->
+  <div id="settingsModal" class="fixed inset-0 bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-6 z-40">
+    <div class="bg-slate-900 border-2 border-slate-700 rounded-3xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- 標題列 -->
+      <div class="px-6 py-4 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
+        <div>
+          <h2 class="text-xl sm:text-2xl font-black text-yellow-300">⚙️ 教學與視覺訓練參數設定</h2>
+          <p class="text-xs sm:text-sm text-slate-400">可依據學生的視覺能力（CVI / 低視能）與手部動作調整</p>
+        </div>
+        <button id="closeSettingsBtn"
+          class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-base sm:text-lg shadow-lg active:scale-95 transition-transform">
+          完成並返回 ✓
+        </button>
+      </div>
+
+      <!-- 設定內容捲動區 -->
+      <div class="p-5 sm:p-6 overflow-y-auto custom-scroll space-y-6">
+
+        <!-- 1. 視覺背景與複雜度層次 -->
+        <section>
+          <label class="block text-base font-bold text-yellow-300 mb-3">1. 視覺複雜度層次（背景與干擾度）</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="levelSelector">
+            <button data-level="1" class="level-btn text-left p-4 rounded-2xl border-2 transition-all">
+              <div class="font-black text-lg text-white">第一層：高對比單一物件</div>
+              <div class="text-xs text-slate-300 mt-1">純黑背景、單一發光目標呼吸閃爍、零雜訊干擾（適合視覺喚起與注視）</div>
+            </button>
+            <button data-level="2" class="level-btn text-left p-4 rounded-2xl border-2 transition-all">
+              <div class="font-black text-lg text-white">第二層：簡單動態追視</div>
+              <div class="text-xs text-slate-300 mt-1">深藍夜空、單一高對比物件平滑移動並帶有光尾（適合視覺追視訓練）</div>
+            </button>
+            <button data-level="3" class="level-btn text-left p-4 rounded-2xl border-2 transition-all">
+              <div class="font-black text-lg text-white">第三層：低干擾情境背景</div>
+              <div class="text-xs text-slate-300 mt-1">簡化雪地與聖誕樹剪影，目標物在樹上發光跳動（基礎前景背景區辨）</div>
+            </button>
+            <button data-level="4" class="level-btn text-left p-4 rounded-2xl border-2 transition-all">
+              <div class="font-black text-lg text-white">第四層：豐富節慶場景</div>
+              <div class="text-xs text-slate-300 mt-1">溫馨聖誕雪村、飄雪動態與多樣裝飾，尋找發光搖擺目標（進階視覺搜尋）</div>
+            </button>
+          </div>
+        </section>
+
+        <!-- 2. 目標物造型與移動速度 -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/80">
+            <label class="block text-sm font-bold text-yellow-300 mb-2.5">2. 聖誕目標物造型</label>
+            <div class="grid grid-cols-2 gap-2" id="targetThemeSelector">
+              <button data-theme="star" class="theme-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-1.5">
+                <span>⭐</span> 發光黃星
+              </button>
+              <button data-theme="ornament" class="theme-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-1.5">
+                <span>🔴</span> 聖誕紅球
+              </button>
+              <button data-theme="gift" class="theme-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-1.5">
+                <span>🎁</span> 閃亮禮物
+              </button>
+              <button data-theme="gingerbread" class="theme-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-1.5">
+                <span>🍪</span> 薑餅人
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/80">
+            <label class="block text-sm font-bold text-yellow-300 mb-2.5">3. 目標物移動速度</label>
+            <div class="grid grid-cols-2 gap-2" id="speedSelector">
+              <button data-speed="0" class="speed-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm">靜止定點</button>
+              <button data-speed="0.6" class="speed-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm">極慢追視</button>
+              <button data-speed="1.3" class="speed-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm">慢速移動</button>
+              <button data-speed="2.2" class="speed-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm">中速移動</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. 手部拍打輔助設定（針對手肌較弱學生） -->
+        <section class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/80 space-y-4">
+          <div class="font-bold text-sm text-yellow-300">4. 手部拍打動作與防誤觸輔助</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-300 mb-2">觸控感應範圍（熱區大小）</label>
+              <div class="grid grid-cols-2 gap-2" id="hitboxSelector">
+                <button data-hitbox="fullscreen" class="hitbox-btn py-2.5 px-3 rounded-xl border-2 font-bold text-xs sm:text-sm">
+                  全螢幕任意拍打<br/><span class="text-[11px] font-normal opacity-80">適合初學者/手肌弱</span>
+                </button>
+                <button data-hitbox="large" class="hitbox-btn py-2.5 px-3 rounded-xl border-2 font-bold text-xs sm:text-sm">
+                  目標周圍大範圍<br/><span class="text-[11px] font-normal opacity-80">適合手眼協調定位</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs text-slate-300 mb-2">
+                <span>防手抖重複觸發冷卻時間</span>
+                <span id="cooldownVal" class="font-bold text-yellow-300">0.8 秒</span>
+              </div>
+              <input id="cooldownSlider" type="range" min="0.4" max="2.0" step="0.1" value="0.8"
+                class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-yellow-400" />
+              <div class="flex justify-between text-[11px] text-slate-400 mt-1">
+                <span>0.4秒 (反應快)</span>
+                <span>2.0秒 (防手掌貼著)</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. 聖誕音樂與音效設定 -->
+        <section class="bg-slate-800/60 p-4 rounded-2xl border border-slate-700/80 space-y-4">
+          <div class="font-bold text-sm text-yellow-300">5. 聖誕音樂與聽覺提示設定</div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-300 mb-2">音樂互動模式</label>
+              <div class="space-y-2" id="musicModeSelector">
+                <button data-mode="advance" class="music-mode-btn w-full text-left py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold">
+                  🎵 拍打推進旋律（推薦：拍一下播一句）
+                </button>
+                <button data-mode="reward" class="music-mode-btn w-full text-left py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold">
+                  🎉 集滿 5 次過關播放（過程中保持安靜）
+                </button>
+                <button data-mode="bgm" class="music-mode-btn w-full text-left py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold">
+                  🎶 持續輕柔播放（音效響起時自動閃避）
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs text-slate-300 mb-1.5">聖誕曲目選擇</label>
+                <div class="grid grid-cols-1 gap-1.5" id="songSelector">
+                  <button data-song="jingle" class="song-btn py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold text-left">
+                    🔔 Jingle Bells（聖誕鈴聲・輕快）
+                  </button>
+                  <button data-song="wish" class="song-btn py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold text-left">
+                    🎄 We Wish You a Merry Christmas
+                  </button>
+                  <button data-song="silent" class="song-btn py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold text-left">
+                    🌙 Silent Night（平安夜・舒緩放鬆）
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 音量控制滑桿 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-700/70">
+            <div>
+              <div class="flex justify-between text-xs text-slate-300 mb-1">
+                <span>聖誕音樂音量</span>
+                <span id="bgmVolVal" class="font-bold text-yellow-300">60%</span>
+              </div>
+              <input id="bgmVolSlider" type="range" min="0" max="100" step="5" value="60"
+                class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-yellow-400" />
+            </div>
+            <div>
+              <div class="flex justify-between text-xs text-slate-300 mb-1">
+                <span>拍打回饋與提示音效音量</span>
+                <span id="sfxVolVal" class="font-bold text-emerald-300">85%</span>
+              </div>
+              <input id="sfxVolSlider" type="range" min="0" max="100" step="5" value="85"
+                class="w-full h-3 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-400" />
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * 1. 遊戲全域狀態與預設教學參數 (Game State & Configuration)
+     * ============================================================================
+     */
+    const CONFIG = {
+      level: 1,               // 1: 高對比純黑, 2: 動態追視, 3: 低干擾雪景, 4: 豐富聖誕村
+      targetTheme: 'star',    // 'star' | 'ornament' | 'gift' | 'gingerbread'
+      speed: 0,               // 0: 靜止, 0.6: 極慢, 1.3: 慢速, 2.2: 中速
+      hitboxMode: 'fullscreen', // 'fullscreen' | 'large'
+      cooldownSec: 0.8,       // 防手抖重複觸發冷卻時間 (秒)
+      musicMode: 'advance',   // 'advance' (拍打推進) | 'reward' (過關播放) | 'bgm' (持續閃避)
+      song: 'jingle',         // 'jingle' | 'wish' | 'silent'
+      bgmVolume: 0.6,
+      sfxVolume: 0.85,
+      starsPerRound: 5        // 每回合集滿 5 次觸發過關慶祝
+    };
+
+    const STATE = {
+      isStarted: false,
+      isSettingsOpen: false,
+      progressCount: 0,
+      lastTapTime: 0,
+      lastActivityTime: performance.now(),
+      attentionPulse: 0,      // 閒置提示脈衝強度
+      celebrating: false,
+      celebrationTimer: 0,
+      target: {
+        x: 0,
+        y: 0,
+        vx: 1,
+        vy: 0.65,
+        baseRadius: 75,
+        pulsePhase: 0,
+        hitAnim: 0,
+        trail: []
+      },
+      particles: [],          // 拍打煙火與光圈粒子
+      ripples: [],            // 觸控擴散波紋
+      snowflakes: [],         // 第 4 層飄雪
+      sceneObjects: {
+        trees: [],
+        houses: [],
+        activeTreeIndex: 0
+      }
+    };
+
+    /**
+     * ============================================================================
+     * 2. Web Audio API 聖誕八音盒與音效合成引擎 (Zero External Audio Dependencies)
+     * ============================================================================
+     */
+    class ChristmasAudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.bgmGain = null;
+        this.sfxGain = null;
+        this.phraseIndex = 0;
+        this.bgmTimer = null;
+        this.bgmNoteIndex = 0;
+        this.isBgmPlaying = false;
+
+        // 音符頻率表 (Hz)
+        this.NOTES = {
+          'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'G4': 392.00, 'A4': 440.00, 'B4': 493.88,
+          'C5': 523.25, 'D5': 587.33, 'E5': 659.25, 'F5': 698.46, 'G5': 783.99, 'A5': 880.00
+        };
+
+        // 聖誕曲庫（拆分為樂句，方便「拍打推進旋律」模式使用）
+        this.SONGS = {
+          jingle: {
+            tempo: 0.24,
+            phrases: [
+              [['E5', 1], ['E5', 1], ['E5', 2]],
+              [['E5', 1], ['E5', 1], ['E5', 2]],
+              [['E5', 1], ['G5', 1], ['C5', 1.5], ['D5', 0.5], ['E5', 3]],
+              [['F5', 1], ['F5', 1], ['F5', 1.5], ['F5', 0.5], ['F5', 1], ['E5', 1], ['E5', 1]],
+              [['E5', 0.5], ['E5', 0.5], ['E5', 1], ['D5', 1], ['D5', 1], ['E5', 1], ['D5', 2], ['G5', 2]]
+            ]
+          },
+          wish: {
+            tempo: 0.28,
+            phrases: [
+              [['D4', 1], ['G4', 1], ['G4', 0.5], ['A4', 0.5], ['G4', 0.5], ['F4', 0.5], ['E4', 1], ['E4', 1]],
+              [['E4', 1], ['A4', 1], ['A4', 0.5], ['B4', 0.5], ['A4', 0.5], ['G4', 0.5], ['F4', 1], ['D4', 1]],
+              [['D4', 1], ['B4', 1], ['B4', 0.5], ['C5', 0.5], ['B4', 0.5], ['A4', 0.5], ['G4', 1], ['E4', 1]],
+              [['D4', 0.5], ['D4', 0.5], ['E4', 1], ['A4', 1], ['F4', 1], ['G4', 2.5]]
+            ]
+          },
+          silent: {
+            tempo: 0.42,
+            phrases: [
+              [['G4', 1.5], ['A4', 0.5], ['G4', 1], ['E4', 2.5]],
+              [['G4', 1.5], ['A4', 0.5], ['G4', 1], ['E4', 2.5]],
+              [['D5', 2], ['D5', 1], ['B4', 2.5]],
+              [['C5', 2], ['C5', 1], ['G4', 2.5]],
+              [['A4', 2], ['A4', 1], ['C5', 1.5], ['B4', 0.5], ['A4', 1], ['G4', 1.5], ['A4', 0.5], ['G4', 1], ['E4', 2.5]]
+            ]
+          }
+        };
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContextClass();
+
+          this.bgmGain = this.ctx.createGain();
+          this.bgmGain.gain.value = CONFIG.bgmVolume * 0.45;
+          this.bgmGain.connect(this.ctx.destination);
+
+          this.sfxGain = this.ctx.createGain();
+          this.sfxGain.gain.value = CONFIG.sfxVolume;
+          this.sfxGain.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      updateVolumes() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        this.bgmGain.gain.setTargetAtTime(CONFIG.bgmVolume * 0.45, now, 0.08);
+        this.sfxGain.gain.setTargetAtTime(CONFIG.sfxVolume, now, 0.05);
+      }
+
+      // 音頻自動閃避 (Audio Ducking)：當關鍵提示或拍打音效響起時，暫時壓低背景音樂
+      duckBgm(durationSec = 0.7) {
+        if (!this.ctx || !this.bgmGain || CONFIG.musicMode !== 'bgm') return;
+        const now = this.ctx.currentTime;
+        const normalVol = CONFIG.bgmVolume * 0.45;
+        const duckedVol = normalVol * 0.15;
+        this.bgmGain.gain.cancelScheduledValues(now);
+        this.bgmGain.gain.setTargetAtTime(duckedVol, now, 0.03);
+        this.bgmGain.gain.setTargetAtTime(normalVol, now + durationSec, 0.25);
+      }
+
+      // 播放單一八音盒/鈴鐺音符
+      playBellNote(freq, startTime, duration, targetGainNode, volumeScale = 1.0) {
+        if (!this.ctx || !freq) return;
+        const osc = this.ctx.createOscillator();
+        const overtone = this.ctx.createOscillator();
+        const noteGain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, startTime);
+
+        // 加入八度泛音營造清脆聖誕鈴鐺感
+        overtone.type = 'triangle';
+        overtone.frequency.setValueAtTime(freq * 2, startTime);
+
+        const overtoneGain = this.ctx.createGain();
+        overtoneGain.gain.value = 0.22;
+
+        noteGain.gain.setValueAtTime(0.001, startTime);
+        noteGain.gain.linearRampToValueAtTime(0.35 * volumeScale, startTime + 0.02);
+        noteGain.gain.exponentialRampToValueAtTime(0.0008, startTime + duration + 0.35);
+
+        osc.connect(noteGain);
+        overtone.connect(overtoneGain);
+        overtoneGain.connect(noteGain);
+        noteGain.connect(targetGainNode);
+
+        osc.start(startTime);
+        overtone.start(startTime);
+        osc.stop(startTime + duration + 0.4);
+        overtone.stop(startTime + duration + 0.4);
+      }
+
+      // 拍打成功回饋音效（魔法閃亮鈴聲）
+      playTapSuccessSfx() {
+        this.init();
+        this.duckBgm(0.6);
+        const now = this.ctx.currentTime;
+        const chord = [523.25, 659.25, 783.99, 1046.50]; // C5 E5 G5 C6
+        chord.forEach((freq, idx) => {
+          this.playBellNote(freq, now + idx * 0.045, 0.35, this.sfxGain, 0.75);
+        });
+      }
+
+      // 閒置注意力引導提示音（溫和的雙音叮叮聲）
+      playAttentionCue() {
+        this.init();
+        this.duckBgm(0.6);
+        const now = this.ctx.currentTime;
+        this.playBellNote(880, now, 0.25, this.sfxGain, 0.55);
+        this.playBellNote(1174.66, now + 0.16, 0.35, this.sfxGain, 0.55);
+      }
+
+      // 模式一：拍打推進旋律（每次拍打播放下一句聖誕歌）
+      playNextSongPhrase() {
+        this.init();
+        const songData = this.SONGS[CONFIG.song] || this.SONGS.jingle;
+        const phrase = songData.phrases[this.phraseIndex % songData.phrases.length];
+        this.phraseIndex++;
+
+        let cursor = this.ctx.currentTime + 0.08;
+        phrase.forEach(([noteName, beats]) => {
+          const dur = beats * songData.tempo;
+          const freq = this.NOTES[noteName];
+          this.playBellNote(freq, cursor, dur, this.bgmGain, 1.15);
+          cursor += dur;
+        });
+      }
+
+      // 模式二：過關獎勵演奏（完整播放整首曲子）
+      playFullCelebrationSong() {
+        this.init();
+        const songData = this.SONGS[CONFIG.song] || this.SONGS.jingle;
+        let cursor = this.ctx.currentTime + 0.1;
+
+        songData.phrases.forEach((phrase) => {
+          phrase.forEach(([noteName, beats]) => {
+            const dur = beats * (songData.tempo * 0.92);
+            const freq = this.NOTES[noteName];
+            this.playBellNote(freq, cursor, dur, this.bgmGain, 1.1);
+            cursor += dur;
+          });
+        });
+      }
+
+      // 模式三：背景音樂持續循環控制
+      syncBgmLoop() {
+        this.stopBgmLoop();
+        if (!STATE.isStarted || CONFIG.musicMode !== 'bgm' || CONFIG.bgmVolume <= 0) return;
+
+        this.init();
+        this.isBgmPlaying = true;
+        const songData = this.SONGS[CONFIG.song] || this.SONGS.jingle;
+        const flatNotes = songData.phrases.flat();
+
+        const scheduleNext = () => {
+          if (!this.isBgmPlaying || CONFIG.musicMode !== 'bgm') return;
+          const [noteName, beats] = flatNotes[this.bgmNoteIndex % flatNotes.length];
+          this.bgmNoteIndex++;
+          const dur = beats * (songData.tempo * 1.15);
+          const freq = this.NOTES[noteName];
+          this.playBellNote(freq, this.ctx.currentTime + 0.02, dur, this.bgmGain, 0.85);
+          this.bgmTimer = setTimeout(scheduleNext, dur * 1000);
+        };
+
+        scheduleNext();
+      }
+
+      stopBgmLoop() {
+        this.isBgmPlaying = false;
+        if (this.bgmTimer) {
+          clearTimeout(this.bgmTimer);
+          this.bgmTimer = null;
+        }
+      }
+    }
+
+    const audio = new ChristmasAudioEngine();
+
+    /**
+     * ============================================================================
+     * 3. 畫布初始化與自適應 RWD 場景建構
+     * ============================================================================
+     */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // 依螢幕短邊自動調整高對比目標物基礎半徑（確保 iPad 直式/橫式皆夠大）
+      const minDim = Math.min(width, height);
+      STATE.target.baseRadius = Math.max(68, Math.min(115, minDim * 0.14));
+
+      // 確保目標物在畫面安全邊界內
+      const pad = STATE.target.baseRadius + 30;
+      if (STATE.target.x === 0 && STATE.target.y === 0) {
+        STATE.target.x = width / 2;
+        STATE.target.y = height / 2;
+      } else {
+        STATE.target.x = Math.max(pad, Math.min(width - pad, STATE.target.x));
+        STATE.target.y = Math.max(pad + 50, Math.min(height - pad, STATE.target.y));
+      }
+
+      buildSceneElements();
+    }
+
+    function buildSceneElements() {
+      // 建立第 3 層與第 4 層的聖誕樹位置
+      STATE.sceneObjects.trees = [
+        { x: width * 0.22, y: height * 0.78, scale: 0.95 },
+        { x: width * 0.50, y: height * 0.76, scale: 1.15 },
+        { x: width * 0.78, y: height * 0.79, scale: 0.90 }
+      ];
+
+      // 建立第 4 層雪花粒子
+      STATE.snowflakes = [];
+      const snowCount = Math.floor(width / 18);
+      for (let i = 0; i < snowCount; i++) {
+        STATE.snowflakes.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          r: 2 + Math.random() * 3.5,
+          speedY: 0.4 + Math.random() * 0.9,
+          drift: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    /**
+     * ============================================================================
+     * 4. 目標物定位與互動邏輯（支援手肌弱拍打與防誤觸冷卻）
+     * ============================================================================
+     */
+    function repositionTarget(isInitial = false) {
+      const marginX = STATE.target.baseRadius + 45;
+      const marginTop = STATE.target.baseRadius + 95; // 避開頂部進度列與設定鈕
+      const marginBottom = STATE.target.baseRadius + 45;
+
+      if (CONFIG.level === 1 && isInitial) {
+        STATE.target.x = width / 2;
+        STATE.target.y = height / 2;
+      } else if (CONFIG.level === 3) {
+        // 第 3 層：將目標物放在其中一棵聖誕樹的樹冠上
+        const trees = STATE.sceneObjects.trees;
+        STATE.sceneObjects.activeTreeIndex = (STATE.sceneObjects.activeTreeIndex + 1) % trees.length;
+        const tree = trees[STATE.sceneObjects.activeTreeIndex];
+        STATE.target.x = tree.x;
+        STATE.target.y = tree.y - 125 * tree.scale;
+      } else {
+        // 隨機產生與前一次保持一定距離的新位置
+        let nx = STATE.target.x;
+        let ny = STATE.target.y;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          nx = marginX + Math.random() * Math.max(40, width - marginX * 2);
+          ny = marginTop + Math.random() * Math.max(40, height - marginTop - marginBottom);
+          const dist = Math.hypot(nx - STATE.target.x, ny - STATE.target.y);
+          if (dist > Math.min(width, height) * 0.25) break;
+        }
+        STATE.target.x = nx;
+        STATE.target.y = ny;
+      }
+
+      // 隨機化移動方向向量
+      const angle = Math.random() * Math.PI * 2;
+      STATE.target.vx = Math.cos(angle);
+      STATE.target.vy = Math.sin(angle);
+      STATE.target.trail = [];
+    }
+
+    function spawnCelebrationParticles(cx, cy, count = 36, bigBurst = false) {
+      const colors = ['#fde047', '#facc15', '#fb7185', '#34d399', '#38bdf8', '#ffffff'];
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+        const speed = (bigBurst ? 4 : 2.5) + Math.random() * (bigBurst ? 8 : 5.5);
+        STATE.particles.push({
+          x: cx,
+          y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size: (bigBurst ? 6 : 4) + Math.random() * 6,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          alpha: 1,
+          decay: 0.015 + Math.random() * 0.015,
+          isStar: Math.random() > 0.45
+        });
+      }
+    }
+
+    function handleCanvasPointerDown(e) {
+      if (!STATE.isStarted || STATE.isSettingsOpen) return;
+      e.preventDefault();
+
+      const now = performance.now();
+      // 防手抖與手掌貼螢幕重複觸發冷卻機制
+      if (now - STATE.lastTapTime < CONFIG.cooldownSec * 1000) {
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const tapX = e.clientX - rect.left;
+      const tapY = e.clientY - rect.top;
+
+      // 產生觸控波紋提供即時視覺回饋
+      STATE.ripples.push({
+        x: tapX,
+        y: tapY,
+        radius: 15,
+        maxRadius: 130,
+        alpha: 0.85
+      });
+
+      // 判定是否拍打成功
+      let isHit = false;
+      if (CONFIG.hitboxMode === 'fullscreen') {
+        isHit = true;
+      } else {
+        // 超大感應熱區（視覺半徑的 2.1 倍）
+        const dist = Math.hypot(tapX - STATE.target.x, tapY - STATE.target.y);
+        if (dist <= STATE.target.baseRadius * 2.1) {
+          isHit = true;
+        }
+      }
+
+      if (!isHit) return;
+
+      // 成功觸發！
+      STATE.lastTapTime = now;
+      STATE.lastActivityTime = now;
+      STATE.attentionPulse = 0;
+      STATE.target.hitAnim = 1.0;
+
+      // 視覺煙火爆發
+      spawnCelebrationParticles(STATE.target.x, STATE.target.y, 38, false);
+
+      // 音效回饋
+      audio.playTapSuccessSfx();
+
+      // 進度累加
+      STATE.progressCount++;
+      renderProgressStars();
+
+      if (STATE.progressCount >= CONFIG.starsPerRound) {
+        // 完成一輪 5 次拍打！觸發盛大過關慶祝
+        triggerRoundCelebration();
+      } else {
+        // 若為「拍打推進旋律」模式，播放下一樂句
+        if (CONFIG.musicMode === 'advance') {
+          audio.playNextSongPhrase();
+        }
+        // 第一層可選擇留在原位或微幅移動，其餘層次移動至新位置
+        if (CONFIG.level === 1 && CONFIG.speed === 0) {
+          // 保持在畫面中央方便持續注視
+        } else {
+          repositionTarget(false);
+        }
+      }
+    }
+
+    function triggerRoundCelebration() {
+      STATE.celebrating = true;
+      STATE.celebrationTimer = 3.6;
+
+      const banner = document.getElementById('celebrationBanner');
+      banner.classList.remove('opacity-0');
+
+      // 畫面多處施放高對比煙火
+      spawnCelebrationParticles(width * 0.25, height * 0.35, 45, true);
+      spawnCelebrationParticles(width * 0.50, height * 0.45, 55, true);
+      spawnCelebrationParticles(width * 0.75, height * 0.35, 45, true);
+
+      if (CONFIG.musicMode === 'reward') {
+        audio.playFullCelebrationSong();
+      } else if (CONFIG.musicMode === 'advance') {
+        audio.playNextSongPhrase();
+      }
+
+      setTimeout(() => {
+        banner.classList.add('opacity-0');
+        STATE.celebrating = false;
+        STATE.progressCount = 0;
+        renderProgressStars();
+        repositionTarget(false);
+      }, 3600);
+    }
+
+    canvas.addEventListener('pointerdown', handleCanvasPointerDown, { passive: false });
+
+    /**
+     * ============================================================================
+     * 5. 視覺分層繪製引擎 (4 Levels + High-Contrast Glowing Christmas Targets)
+     * ============================================================================
+     */
+    function drawStarShape(cx, cy, spikes, outerR, innerR) {
+      let rot = (Math.PI / 2) * 3;
+      let x = cx;
+      let y = cy;
+      const step = Math.PI / spikes;
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - outerR);
+      for (let i = 0; i < spikes; i++) {
+        x = cx + Math.cos(rot) * outerR;
+        y = cy + Math.sin(rot) * outerR;
+        ctx.lineTo(x, y);
+        rot += step;
+
+        x = cx + Math.cos(rot) * innerR;
+        y = cy + Math.sin(rot) * innerR;
+        ctx.lineTo(x, y);
+        rot += step;
+      }
+      ctx.lineTo(cx, cy - outerR);
+      ctx.closePath();
+    }
+
+    // 繪製 4 種不同層次的背景
+    function drawBackground(dt) {
+      if (CONFIG.level === 1) {
+        // 第一層：純黑無干擾背景（CVI 最高對比）
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+        return;
+      }
+
+      if (CONFIG.level === 2) {
+        // 第二層：極深午夜藍單色背景（適合動態追視）
+        ctx.fillStyle = '#030712';
+        ctx.fillRect(0, 0, width, height);
+        return;
+      }
+
+      if (CONFIG.level === 3) {
+        // 第三層：低干擾雙色雪地與簡化聖誕樹剪影
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+        skyGrad.addColorStop(0, '#091124');
+        skyGrad.addColorStop(1, '#13223f');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, width, height);
+
+        // 簡化白色雪坡輪廓
+        ctx.fillStyle = '#cbd5e1';
+        ctx.beginPath();
+        ctx.moveTo(0, height * 0.76);
+        ctx.quadraticCurveTo(width * 0.5, height * 0.70, width, height * 0.77);
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        ctx.fill();
+
+        // 3 棵低飽和度深綠色聖誕樹剪影
+        STATE.sceneObjects.trees.forEach((tree) => {
+          drawSimpleTree(tree.x, tree.y, tree.scale, '#143829', false);
+        });
+        return;
+      }
+
+      if (CONFIG.level === 4) {
+        // 第四層：豐富溫馨聖誕雪村場景
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+        skyGrad.addColorStop(0, '#0b1736');
+        skyGrad.addColorStop(0.65, '#1e3a6e');
+        skyGrad.addColorStop(1, '#2b4c8c');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, width, height);
+
+        // 遠景月亮
+        ctx.save();
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.35)';
+        ctx.beginPath();
+        ctx.arc(width * 0.14, height * 0.2, 42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // 遠景雪山
+        ctx.fillStyle = '#334e7b';
+        ctx.beginPath();
+        ctx.moveTo(0, height * 0.72);
+        ctx.lineTo(width * 0.25, height * 0.52);
+        ctx.lineTo(width * 0.55, height * 0.72);
+        ctx.lineTo(width * 0.82, height * 0.48);
+        ctx.lineTo(width, height * 0.70);
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        ctx.fill();
+
+        // 前景雪地
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.moveTo(0, height * 0.74);
+        ctx.quadraticCurveTo(width * 0.35, height * 0.68, width * 0.7, height * 0.74);
+        ctx.quadraticCurveTo(width * 0.88, height * 0.77, width, height * 0.72);
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        ctx.fill();
+
+        // 溫馨小木屋（帶暖黃燈光窗戶）
+        drawCozyHouse(width * 0.16, height * 0.75, 0.9);
+        drawCozyHouse(width * 0.84, height * 0.74, 0.85);
+
+        // 裝飾聖誕樹
+        STATE.sceneObjects.trees.forEach((tree) => {
+          drawSimpleTree(tree.x, tree.y, tree.scale, '#165b33', true);
+        });
+
+        // 飄落雪花
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        STATE.snowflakes.forEach((flake) => {
+          flake.y += flake.speedY;
+          flake.drift += 0.02;
+          flake.x += Math.sin(flake.drift) * 0.4;
+          if (flake.y > height) {
+            flake.y = -5;
+            flake.x = Math.random() * width;
+          }
+          ctx.beginPath();
+          ctx.arc(flake.x, flake.y, flake.r, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+    }
+
+    function drawSimpleTree(x, y, scale, color, withOrnaments) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+
+      // 樹幹
+      ctx.fillStyle = '#452719';
+      ctx.fillRect(-14, 0, 28, 32);
+
+      // 三層樹冠
+      ctx.fillStyle = color;
+      const tiers = [
+        { top: -180, bottom: -100, halfW: 52 },
+        { top: -130, bottom: -45, halfW: 72 },
+        { top: -75, bottom: 8, halfW: 92 }
+      ];
+      tiers.forEach((t) => {
+        ctx.beginPath();
+        ctx.moveTo(0, t.top);
+        ctx.lineTo(-t.halfW, t.bottom);
+        ctx.lineTo(t.halfW, t.bottom);
+        ctx.closePath();
+        ctx.fill();
+      });
+
+      if (withOrnaments) {
+        // 樹上小彩球干擾物（亮度低於主目標物，維持視覺區辨度）
+        const dots = [
+          { dx: -25, dy: -65, c: '#ef4444' },
+          { dx: 30, dy: -20, c: '#38bdf8' },
+          { dx: -38, dy: -12, c: '#f59e0b' },
+          { dx: 18, dy: -115, c: '#ec4899' }
+        ];
+        dots.forEach((d) => {
+          ctx.fillStyle = d.c;
+          ctx.beginPath();
+          ctx.arc(d.dx, d.dy, 7, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      ctx.restore();
+    }
+
+    function drawCozyHouse(x, y, scale) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+
+      // 屋身
+      ctx.fillStyle = '#7c2d12';
+      ctx.fillRect(-55, -75, 110, 75);
+
+      // 積雪屋頂
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.moveTo(0, -120);
+      ctx.lineTo(-70, -70);
+      ctx.lineTo(70, -70);
+      ctx.closePath();
+      ctx.fill();
+
+      // 發光暖黃窗戶
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(-35, -52, 26, 26);
+      ctx.fillRect(9, -52, 26, 26);
+
+      ctx.restore();
+    }
+
+    // 繪製高對比發光聖誕目標物
+    function drawTargetObject(dt) {
+      const t = STATE.target;
+      t.pulsePhase += dt * 3.4;
+
+      // 呼吸縮放與閒置引導脈衝
+      const breathe = 1 + Math.sin(t.pulsePhase) * 0.09 + STATE.attentionPulse * 0.22;
+      const hitBounce = t.hitAnim > 0 ? Math.sin(t.hitAnim * Math.PI) * 0.35 : 0;
+      if (t.hitAnim > 0) t.hitAnim = Math.max(0, t.hitAnim - dt * 3.2);
+
+      const r = t.baseRadius * (breathe + hitBounce);
+
+      // 動態追視模式移動更新
+      if (CONFIG.speed > 0 && !STATE.celebrating) {
+        const pxPerSec = CONFIG.speed * 115;
+        t.x += t.vx * pxPerSec * dt;
+        t.y += t.vy * pxPerSec * dt;
+
+        const padX = r + 35;
+        const padTop = r + 90;
+        const padBottom = r + 35;
+
+        if (t.x < padX) { t.x = padX; t.vx = Math.abs(t.vx); }
+        if (t.x > width - padX) { t.x = width - padX; t.vx = -Math.abs(t.vx); }
+        if (t.y < padTop) { t.y = padTop; t.vy = Math.abs(t.vy); }
+        if (t.y > height - padBottom) { t.y = height - padBottom; t.vy = -Math.abs(t.vy); }
+
+        // 紀錄光尾軌跡（輔助視障學生視覺追蹤）
+        t.trail.push({ x: t.x, y: t.y, alpha: 0.55 });
+        if (t.trail.length > 18) t.trail.shift();
+      }
+
+      // 繪製光尾軌跡
+      if (t.trail.length > 1) {
+        t.trail.forEach((pt, idx) => {
+          const ratio = idx / t.trail.length;
+          ctx.fillStyle = `rgba(254, 240, 138, ${ratio * 0.28})`;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, r * 0.55 * ratio, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // 若為「目標周圍大範圍」模式，繪製柔和的感應區提示光環
+      if (CONFIG.hitboxMode === 'large') {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.25)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([12, 10]);
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.baseRadius * 2.0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 外層強力呼吸光暈（CVI 視覺吸引關鍵）
+      const glowRadius = r * (1.85 + Math.sin(t.pulsePhase) * 0.25);
+      const outerGlow = ctx.createRadialGradient(t.x, t.y, r * 0.2, t.x, t.y, glowRadius);
+      outerGlow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      outerGlow.addColorStop(0.45, 'rgba(250, 204, 21, 0.55)');
+      outerGlow.addColorStop(1, 'rgba(250, 204, 21, 0)');
+
+      ctx.fillStyle = outerGlow;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 繪製選定的聖誕目標造型
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.shadowColor = '#fef08a';
+      ctx.shadowBlur = 35;
+
+      if (CONFIG.targetTheme === 'star') {
+        // 高對比發光黃色大星星
+        ctx.rotate(Math.sin(t.pulsePhase * 0.5) * 0.12);
+        drawStarShape(0, 0, 5, r * 1.15, r * 0.52);
+        ctx.fillStyle = '#fde047';
+        ctx.fill();
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // 可愛微笑眼睛增加注視焦點
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.arc(-r * 0.18, -r * 0.05, r * 0.08, 0, Math.PI * 2);
+        ctx.arc(r * 0.18, -r * 0.05, r * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (CONFIG.targetTheme === 'ornament') {
+        // 高對比發光聖誕紅球（CVI 學生對鮮紅色反應極佳）
+        // 頂部金色掛環
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(-r * 0.22, -r * 1.12, r * 0.44, r * 0.24);
+
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff1e42';
+        ctx.fill();
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // 亮黃色裝飾條紋與高光
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.85, 0);
+        ctx.lineTo(r * 0.85, 0);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255,255,255,0.75)';
+        ctx.beginPath();
+        ctx.ellipse(-r * 0.35, -r * 0.38, r * 0.22, r * 0.12, -Math.PI / 4, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (CONFIG.targetTheme === 'gift') {
+        // 高對比閃亮聖誕禮物盒
+        const boxSize = r * 1.65;
+        ctx.rotate(Math.sin(t.pulsePhase * 0.6) * 0.08);
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.roundRect(-boxSize / 2, -boxSize / 2, boxSize, boxSize, 18);
+        ctx.fill();
+        ctx.stroke();
+
+        // 亮黃色十字緞帶
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(-boxSize * 0.13, -boxSize / 2 + 3, boxSize * 0.26, boxSize - 6);
+        ctx.fillRect(-boxSize / 2 + 3, -boxSize * 0.13, boxSize - 6, boxSize * 0.26);
+
+        // 蝴蝶結
+        ctx.beginPath();
+        ctx.arc(-boxSize * 0.16, -boxSize * 0.56, boxSize * 0.16, 0, Math.PI * 2);
+        ctx.arc(boxSize * 0.16, -boxSize * 0.56, boxSize * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (CONFIG.targetTheme === 'gingerbread') {
+        // 高對比發光薑餅人
+        ctx.rotate(Math.sin(t.pulsePhase * 0.8) * 0.15);
+        ctx.fillStyle = '#f59e0b';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6;
+
+        // 身體與四肢
+        ctx.beginPath();
+        ctx.roundRect(-r * 0.78, -r * 0.22, r * 1.56, r * 0.38, 18); // 手臂
+        ctx.roundRect(-r * 0.42, -r * 0.25, r * 0.84, r * 1.15, 24); // 軀幹
+        ctx.fill();
+        ctx.stroke();
+
+        // 頭部
+        ctx.beginPath();
+        ctx.arc(0, -r * 0.55, r * 0.48, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // 高對比眼睛與鈕扣
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(-r * 0.16, -r * 0.62, r * 0.08, 0, Math.PI * 2);
+        ctx.arc(r * 0.16, -r * 0.62, r * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.1, 0, Math.PI * 2);
+        ctx.arc(0, r * 0.32, r * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function drawEffects(dt) {
+      // 觸控擴散波紋
+      for (let i = STATE.ripples.length - 1; i >= 0; i--) {
+        const rp = STATE.ripples[i];
+        rp.radius += dt * 360;
+        rp.alpha -= dt * 1.6;
+        if (rp.alpha <= 0) {
+          STATE.ripples.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.strokeStyle = `rgba(253, 224, 71, ${rp.alpha})`;
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(rp.x, rp.y, rp.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 拍打煙火粒子
+      for (let i = STATE.particles.length - 1; i >= 0; i--) {
+        const p = STATE.particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.12; // 輕微重力
+        p.alpha -= p.decay;
+        if (p.alpha <= 0) {
+          STATE.particles.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 12;
+        if (p.isStar) {
+          drawStarShape(p.x, p.y, 5, p.size * 1.5, p.size * 0.65);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 6. 主動畫迴圈與閒置注意力引導
+     * ============================================================================
+     */
+    let lastFrameTime = performance.now();
+
+    function gameLoop(now) {
+      const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
+      lastFrameTime = now;
+
+      // 若超過 6.5 秒學生未動作，發出溫和提示音與視覺脈衝吸引注意
+      if (STATE.isStarted && !STATE.isSettingsOpen && !STATE.celebrating) {
+        if (now - STATE.lastActivityTime > 6500) {
+          STATE.lastActivityTime = now;
+          STATE.attentionPulse = 1.0;
+          audio.playAttentionCue();
+        }
+      }
+      if (STATE.attentionPulse > 0) {
+        STATE.attentionPulse = Math.max(0, STATE.attentionPulse - dt * 1.2);
+      }
+
+      drawBackground(dt);
+      drawTargetObject(dt);
+      drawEffects(dt);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    /**
+     * ============================================================================
+     * 7. 頂部進度列與老師設定面板互動控制
+     * ============================================================================
+     */
+    function renderProgressStars() {
+      const bar = document.getElementById('progressBar');
+      bar.innerHTML = '';
+      for (let i = 0; i < CONFIG.starsPerRound; i++) {
+        const lit = i < STATE.progressCount;
+        const star = document.createElement('div');
+        star.className = `w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-xl sm:text-2xl transition-all ${
+          lit
+            ? 'bg-yellow-400 text-slate-950 shadow-[0_0_18px_rgba(250,204,21,0.9)] star-lit'
+            : 'bg-slate-800/80 text-slate-600 border border-slate-600'
+        }`;
+        star.textContent = '★';
+        bar.appendChild(star);
+      }
+    }
+
+    // 長按右上角齒輪 1.1 秒開啟設定面板（避免學生拍打螢幕時誤觸開啟）
+    const teacherBtn = document.getElementById('teacherBtn');
+    const holdCircle = document.getElementById('holdProgressCircle');
+    const holdHint = document.getElementById('holdHint');
+    let holdStartTime = 0;
+    let holdRaf = null;
+    const HOLD_DURATION = 1100;
+    const CIRCUMFERENCE = 150.8;
+
+    function startHold(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      holdStartTime = performance.now();
+      holdHint.classList.remove('opacity-0');
+
+      const tick = (now) => {
+        const elapsed = now - holdStartTime;
+        const progress = Math.min(elapsed / HOLD_DURATION, 1);
+        holdCircle.style.strokeDashoffset = CIRCUMFERENCE * (1 - progress);
+
+        if (progress >= 1) {
+          cancelHold();
+          openSettingsModal();
+        } else {
+          holdRaf = requestAnimationFrame(tick);
+        }
+      };
+      holdRaf = requestAnimationFrame(tick);
+    }
+
+    function cancelHold() {
+      if (holdRaf) cancelAnimationFrame(holdRaf);
+      holdRaf = null;
+      holdCircle.style.strokeDashoffset = CIRCUMFERENCE;
+      holdHint.classList.add('opacity-0');
+    }
+
+    teacherBtn.addEventListener('pointerdown', startHold);
+    teacherBtn.addEventListener('pointerup', cancelHold);
+    teacherBtn.addEventListener('pointerleave', cancelHold);
+    teacherBtn.addEventListener('pointercancel', cancelHold);
+
+    // 設定面板開關與 UI 同步
+    const settingsModal = document.getElementById('settingsModal');
+
+    function syncSettingsUI() {
+      // 視覺層次按鈕
+      document.querySelectorAll('.level-btn').forEach((btn) => {
+        const active = Number(btn.dataset.level) === CONFIG.level;
+        btn.className = `level-btn text-left p-4 rounded-2xl border-2 transition-all ${
+          active
+            ? 'bg-yellow-400/20 border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]'
+            : 'bg-slate-800/70 border-slate-700 hover:border-slate-500'
+        }`;
+      });
+
+      // 目標物造型
+      document.querySelectorAll('.theme-btn').forEach((btn) => {
+        const active = btn.dataset.theme === CONFIG.targetTheme;
+        btn.className = `theme-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-1.5 ${
+          active ? 'bg-yellow-400 text-slate-950 border-yellow-300' : 'bg-slate-900 text-slate-200 border-slate-700'
+        }`;
+      });
+
+      // 移動速度
+      document.querySelectorAll('.speed-btn').forEach((btn) => {
+        const active = Number(btn.dataset.speed) === CONFIG.speed;
+        btn.className = `speed-btn py-2.5 px-3 rounded-xl border-2 font-bold text-sm ${
+          active ? 'bg-yellow-400 text-slate-950 border-yellow-300' : 'bg-slate-900 text-slate-200 border-slate-700'
+        }`;
+      });
+
+      // 觸控感應範圍
+      document.querySelectorAll('.hitbox-btn').forEach((btn) => {
+        const active = btn.dataset.hitbox === CONFIG.hitboxMode;
+        btn.className = `hitbox-btn py-2.5 px-3 rounded-xl border-2 font-bold text-xs sm:text-sm ${
+          active ? 'bg-emerald-400 text-slate-950 border-emerald-300' : 'bg-slate-900 text-slate-200 border-slate-700'
+        }`;
+      });
+
+      // 音樂模式
+      document.querySelectorAll('.music-mode-btn').forEach((btn) => {
+        const active = btn.dataset.mode === CONFIG.musicMode;
+        btn.className = `music-mode-btn w-full text-left py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold ${
+          active ? 'bg-yellow-400 text-slate-950 border-yellow-300' : 'bg-slate-900 text-slate-200 border-slate-700'
+        }`;
+      });
+
+      // 曲目選擇
+      document.querySelectorAll('.song-btn').forEach((btn) => {
+        const active = btn.dataset.song === CONFIG.song;
+        btn.className = `song-btn py-2 px-3 rounded-xl border-2 text-xs sm:text-sm font-bold text-left ${
+          active ? 'bg-yellow-400 text-slate-950 border-yellow-300' : 'bg-slate-900 text-slate-200 border-slate-700'
+        }`;
+      });
+
+      document.getElementById('cooldownSlider').value = CONFIG.cooldownSec;
+      document.getElementById('cooldownVal').textContent = `${CONFIG.cooldownSec.toFixed(1)} 秒`;
+
+      document.getElementById('bgmVolSlider').value = Math.round(CONFIG.bgmVolume * 100);
+      document.getElementById('bgmVolVal').textContent = `${Math.round(CONFIG.bgmVolume * 100)}%`;
+
+      document.getElementById('sfxVolSlider').value = Math.round(CONFIG.sfxVolume * 100);
+      document.getElementById('sfxVolVal').textContent = `${Math.round(CONFIG.sfxVolume * 100)}%`;
+    }
+
+    function openSettingsModal() {
+      STATE.isSettingsOpen = true;
+      syncSettingsUI();
+      settingsModal.classList.remove('hidden');
+      settingsModal.classList.add('flex');
+    }
+
+    function closeSettingsModal() {
+      STATE.isSettingsOpen = false;
+      STATE.lastActivityTime = performance.now();
+      settingsModal.classList.add('hidden');
+      settingsModal.classList.remove('flex');
+      repositionTarget(true);
+      audio.syncBgmLoop();
+    }
+
+    // 綁定設定面板各項按鈕事件
+    document.querySelectorAll('.level-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        CONFIG.level = Number(btn.dataset.level);
+        // 若切換至第 2 層動態追視且目前速度為 0，自動給予極慢速度方便老師操作
+        if (CONFIG.level === 2 && CONFIG.speed === 0) {
+          CONFIG.speed = 0.6;
+        }
+        syncSettingsUI();
+      });
+    });
+
+    document.querySelectorAll('.theme-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        CONFIG.targetTheme = btn.dataset.theme;
+        syncSettingsUI();
+      });
+    });
+
+    document.querySelectorAll('.speed-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        CONFIG.speed = Number(btn.dataset.speed);
+        syncSettingsUI();
+      });
+    });
+
+    document.querySelectorAll('.hitbox-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        CONFIG.hitboxMode = btn.dataset.hitbox;
+        syncSettingsUI();
+      });
+    });
+
+    document.querySelectorAll('.music-mode-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        CONFIG.musicMode = btn.dataset.mode;
+        audio.phraseIndex = 0;
+        syncSettingsUI();
+      });
+    });
+
+    document.querySelectorAll('.song-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        CONFIG.song = btn.dataset.song;
+        audio.phraseIndex = 0;
+        audio.bgmNoteIndex = 0;
+        syncSettingsUI();
+        // 試聽第一個音符
+        audio.init();
+        audio.playAttentionCue();
+      });
+    });
+
+    document.getElementById('cooldownSlider').addEventListener('input', (e) => {
+      CONFIG.cooldownSec = parseFloat(e.target.value);
+      document.getElementById('cooldownVal').textContent = `${CONFIG.cooldownSec.toFixed(1)} 秒`;
+    });
+
+    document.getElementById('bgmVolSlider').addEventListener('input', (e) => {
+      CONFIG.bgmVolume = Number(e.target.value) / 100;
+      document.getElementById('bgmVolVal').textContent = `${e.target.value}%`;
+      audio.updateVolumes();
+    });
+
+    document.getElementById('sfxVolSlider').addEventListener('input', (e) => {
+      CONFIG.sfxVolume = Number(e.target.value) / 100;
+      document.getElementById('sfxVolVal').textContent = `${e.target.value}%`;
+      audio.updateVolumes();
+    });
+
+    // 啟動與面板開關按鈕
+    document.getElementById('startGameBtn').addEventListener('click', () => {
+      audio.init();
+      STATE.isStarted = true;
+      STATE.lastActivityTime = performance.now();
+      document.getElementById('startOverlay').classList.add('hidden');
+      repositionTarget(true);
+      audio.syncBgmLoop();
+    });
+
+    document.getElementById('openSettingsFirstBtn').addEventListener('click', () => {
+      audio.init();
+      STATE.isStarted = true;
+      document.getElementById('startOverlay').classList.add('hidden');
+      openSettingsModal();
+    });
+
+    document.getElementById('closeSettingsBtn').addEventListener('click', closeSettingsModal);
+
+    // 畫面初始化
+    window.onload = () => {
+      renderProgressStars();
+      syncSettingsUI();
+      repositionTarget(true);
+      requestAnimationFrame(gameLoop);
+    };
+  </script>
+</body>
+</html>
